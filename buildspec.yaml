@@ -1,0 +1,19 @@
+version: 0.2
+phases:
+  #install:
+   # runtime-versions:
+    #  java: corretto11
+  pre_build:
+    commands:
+      - echo "Entered the pre-build phase"
+  build:
+    commands:
+      - echo "Entered build phase"
+      - mvn clean package
+  post_build:
+    commands:
+      - echo "Entered the post-build phase"
+      - mv target/dynamodb-crud-1.0.jar ./
+artifacts:
+  files:
+    - dynamodb-crud-1.0.jar

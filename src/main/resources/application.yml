@@ -1,0 +1,6 @@
+
+aws:
+  accessKeyId: AKIAJMMYMHBAO2QUZVKQ
+  secret-key: 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
+  dynamodb:
+    #endpoint: "http://localhost:8000"

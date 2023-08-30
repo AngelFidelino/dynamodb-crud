@@ -1,0 +1,207 @@
+#Create a buildspec.yml at the root of the project
+# Create the code build component in SAM
+# Create the code pipeline component in SAM
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: Code Pipeline project
+
+Parameters:
+  ComputeType:
+    AllowedValues:
+      - BUILD_GENERAL1_SMALL
+      - BUILD_GENERAL1_MEDIUM
+    Default: BUILD_GENERAL1_SMALL
+    Description: AWS CodeBuild project compute type.
+    Type: String
+  EnvironmentType:
+    AllowedValues:
+      - LINUX_CONTAINER
+      - WINDOWS_CONTAINER
+    Default: LINUX_CONTAINER
+    Description: Environment type used by AWS CodeBuild. See the documentation for details (https://docs.aws.amazon.com/codebuild/latest/userguide/create-project.html#create-project-cli).
+    Type: String
+  GitHubOAuthToken:
+    Description: OAuth token used by AWS CodeBuild to connect to GitHub
+    NoEcho: true
+    Type: String
+  GitHubOwner:
+    Description: GitHub username owning the repo
+    Type: String
+  GitHubRepo:
+    Description: GitHub repo name
+    Type: String
+  GitHubBranch:
+    Description: GitHub Branch name
+    Type: String
+
+Mappings:
+  attributes:
+    s3BucketForArtifacts:
+      name: !Sub ${AWS::StackName}-codepipeline-artifacts
+
+Outputs:
+  s3BucketNameForArtifacts:
+    Description: S3 to store app artifacts
+    Value: !FindInMap [ "attributes", "s3BucketForArtifacts", "name"]
+
+Resources:
+  ## ----------------------------------------------------------------------------
+  S3BucketForArtifacts:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !FindInMap [ "attributes", "s3BucketForArtifacts", "name"]
+
+  ## ----------------------------------------------------------------------------
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${AWS::StackName}-project
+      Artifacts:
+        Type: S3
+        Name: !Sub ${AWS::StackName}-project
+        Location: !FindInMap [ "attributes", "s3BucketForArtifacts", "name"]
+      BadgeEnabled: true
+      Environment:
+        ComputeType: !Ref ComputeType
+        Image: 'aws/codebuild/standard:corretto11'
+        Type: !Ref EnvironmentType
+      ServiceRole: !GetAtt CodeBuildProjectRole.Arn
+      Source:
+        Auth:
+          Resource: !Ref GitHubOAuthToken
+          Type: OAUTH
+        GitCloneDepth: 1
+        Location: !Sub https://github.com/${GitHubOwner}/${GitHubRepo}.git
+        ReportBuildStatus: true
+        Type: GITHUB
+      Triggers:
+        Webhook: true
+
+  ## ----------------------------------------------------------------------------
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub ${AWS::StackName}-pipeline
+      RoleArn: !GetAtt [ IamRoleForCodePipeline, Arn ]
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: SourceAction
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Version: 1
+                Provider: GitHub
+              OutputArtifacts:
+                - Name: GitHubSrc
+              Configuration:
+                Owner: !Ref GitHubOwner
+                Repo: !Ref GitHubRepo
+                Branch: !Ref GitHubBranch
+                OAuthToken: !Ref GitHubOAuthToken
+                PollForSourceChanges: true
+              RunOrder: "1"
+        - Name: Build
+          Actions:
+            - Name: BuildAction
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              InputArtifacts:
+                - Name: GitHubSrc
+              OutputArtifacts:
+                - Name: CodeBuildArtifact
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              RunOrder: "1"
+        - Name: Deploy
+          Actions:
+            - Name: DeployToElasticBeanstalk
+              InputArtifacts:
+                - Name: CodeBuildArtifact
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: '1'
+                Provider: ElasticBeanstalk
+              OutputArtifacts: [ ]
+              Configuration:
+                ApplicationName: !ImportValue beanStalkApplication-dynamoDb-app
+                EnvironmentName: !ImportValue beanStalkApplication-env-dynamoDb-app
+              RunOrder: 1
+      ArtifactStore:
+        Type: S3
+        Location: !Ref S3BucketForArtifacts
+
+  CodeBuildProjectRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+        Version: '2012-10-17'
+      Path: /service-role/
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource:
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+              - Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:ListBucket
+                Effect: Allow
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${S3BucketForArtifacts}
+                  - !Sub arn:${AWS::Partition}:s3:::${S3BucketForArtifacts}/*
+              - Action:
+                  - serverlessrepo:GetApplication
+                  - serverlessrepo:CreateCloudFormationTemplate
+                  - serverlessrepo:GetCloudFormationTemplate
+                Effect: Allow
+                Resource: '*'
+            Version: '2012-10-17'
+          PolicyName: CICodeBuildRolePolicy
+
+  IamRoleForCodePipeline:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-iam-role-codepipeline
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: policy-for-codepipeline
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: [
+                  "s3:GetObject",
+                  "s3:GetObjectVersion",
+                  "s3:GetBucketVersioning",
+                  "s3:PutObject" ]
+                Resource: !Join [ "", [ !GetAtt S3BucketForArtifacts.Arn, "/*" ] ]
+              - Effect: Allow
+                Action: [
+                  "codebuild:BatchGetBuilds",
+                  "codebuild:StartBuild" ]
+                Resource: "*"
