@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Elastic Beanstalk
+Resources:
+  EBApp:
+    Type: AWS::ElasticBeanstalk::Application
+    Properties:
+      ApplicationName:
+        Fn::Sub: ${AWS::StackName}-eb
+      Description:
+        Fn::Sub: ${AWS::StackName}-eb
+    Metadata:
+      SamResourceId: EBApp
+  EBDevAppVersion:
+    Type: AWS::ElasticBeanstalk::ApplicationVersion
+    DependsOn:
+    - EBApp
+    Properties:
+      ApplicationName:
+        Ref: EBApp
+      SourceBundle:
+        S3Bucket:
+          Fn::ImportValue: s3BucketNameForArtifacts
+        S3Key: dynamodb-crud-1.0.jar
+    Metadata:
+      SamResourceId: EBDevAppVersion
+  EBEnvDev:
+    Type: AWS::ElasticBeanstalk::Environment
+    DependsOn:
+    - EBApp
+    - EBDevAppVersion
+    Properties:
+      ApplicationName:
+        Ref: EBApp
+      Description: AWS Elastic Beanstalk Environment running Docker Sample Application
+      EnvironmentName:
+        Fn::Join:
+        - '-'
+        - - Ref: EBApp
+          - Dev
+      VersionLabel:
+        Ref: EBDevAppVersion
+      SolutionStackName: 64bit Amazon Linux 2018.03 v2.14.3 running Java 11
+      OptionSettings:
+      - Namespace: aws:elasticbeanstalk:environment
+        OptionName: ServiceRole
+        Value:
+          Ref: EBServiceRole
+    Metadata:
+      SamResourceId: EBEnvDev
+  EBServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - elasticbeanstalk.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkEnhancedHealth
+      - arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkService
+      - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+      RoleName: aws-elasticbeanstalk-service-role
+    Metadata:
+      SamResourceId: EBServiceRole
+Outputs:
+  beanStalkApplicationDynamoDbApp:
+    Description: ElasticBeanstalk Application Name
+    Value: "\xC2\xA1Ref EBApp"
+    Export:
+      Name: beanStalkApplicationDynamoDbApp
+  beanStalkApplicationEnvDynamoDbApp:
+    Description: ElasticBeanstalk Application Environment
+    Value: "\xC2\xA1Ref EBEnvDev"
+    Export:
+      Name: beanStalkApplicationEnvDynamoDbApp

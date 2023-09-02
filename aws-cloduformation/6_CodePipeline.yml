@@ -1,0 +1,82 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: Code Pipeline project
+Resources:
+  CodePipeline:
+    Type: "AWS::CodePipeline::Pipeline"
+    Properties:
+      Name: !Sub CICDPipe
+      RoleArn: !GetAtt [ CodePipelineRole, Arn ]
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: ApplicationSource
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeCommit
+              OutputArtifacts:
+                - Name: ApplicationOutput
+              Configuration:
+                BranchName: main
+                RepositoryName: !ImportValue ccDemoAppRepoName
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: CodeBuild
+              InputArtifacts:
+                - Name: ApplicationOutput
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              OutputArtifacts:
+                - Name: CodeBuildArtifact
+              Configuration:
+                ProjectName: !ImportValue dynamoDBAppCodeBuildProject
+              RunOrder: 1
+        - Name: DeployToDev
+          Actions:
+            - Name: DeployToDev
+              InputArtifacts:
+                - Name: CodeBuildArtifact
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CodeDeploy
+              Configuration:
+                ApplicationName: !ImportValue CodeDeployApplication
+                DeploymentGroupName: !ImportValue CodeDeployDevDeploymentGroup
+              RunOrder: 1
+        - Name: ManualApproval
+          Actions:
+            - Name: ManualApproval
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+              # Configuration:
+              #   NotificationArn: !Ref CodePipelineSNSTopic
+              #   CustomData: Approve Production deployment
+              RunOrder: 1
+        - Name: DeployToProd
+          Actions:
+            - Name: DeployToProd
+              InputArtifacts:
+                - Name: CodeBuildArtifact
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CodeDeploy
+              Configuration:
+                ApplicationName: !ImportValue CodeDeployApplication
+                DeploymentGroupName: !ImportValue CodeDeployProdDeploymentGroup
+              RunOrder: 1
+
+      ArtifactStore:
+        Type: S3

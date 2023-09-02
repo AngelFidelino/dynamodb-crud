@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: Code Pipeline project
+Parameters:
+  GitHubOAuthToken:
+    Description: OAuth token used by AWS CodeBuild to connect to GitHub
+    NoEcho: true
+    Type: String
+  GitHubOwner:
+    Description: GitHub username owning the repo
+    Type: String
+  GitHubRepo:
+    Description: GitHub repo name
+    Type: String
+
+Resources:
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${AWS::StackName}-project
+      Artifacts:
+        Type: S3
+        Name: !Sub ${AWS::StackName}-project
+        Location: !ImportValue dynamoDBAppS3BucketNameForArtifacts
+      BadgeEnabled: true
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: 'aws/codebuild/standard:corretto11'
+        Type: LINUX_CONTAINER
+      ServiceRole: !GetAtt CodeBuildProjectRole.Arn
+      Source:
+        Auth:
+          Resource: !Ref GitHubOAuthToken
+          Type: OAUTH
+        GitCloneDepth: 1
+        Location: !Sub https://github.com/${GitHubOwner}/${GitHubRepo}.git
+        ReportBuildStatus: true
+        Type: GITHUB
+      Triggers:
+        Webhook: true
+
+  ## ----------------------------------------------------------------------------
+  CodeBuildProjectRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${AWS::StackName}-iam-role-codebuild
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+        Version: '2012-10-17'
+      Path: /service-role/
+      Policies:
+        - PolicyName: CICodeBuildRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
+              - Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:ListBucket
+                Effect: Allow
+                Resource:
+                  - !Sub
+                    - "arn:${AWS::Partition}:s3:::${s3BucketNameForArtifacts}"
+                    - s3BucketNameForArtifacts: !ImportValue dynamoDBAppS3BucketNameForArtifacts
+                  - !Sub
+                    - "arn:${AWS::Partition}:s3:::${s3BucketNameForArtifacts}/*"
+                    - s3BucketNameForArtifacts: !ImportValue dynamoDBAppS3BucketNameForArtifacts
+                  #- Fn::ImportValue: !Sub arn:${AWS::Partition}:s3:::${dynamoDBAppS3BucketNameForArtifacts}
+                  #- Fn::ImportValue: !Sub arn:${AWS::Partition}:s3:::${dynamoDBAppS3BucketNameForArtifacts}/*
+                  #- !Sub arn:${AWS::Partition}:s3:::${dynamoDBAppS3BucketNameForArtifacts}
+                  #- !Sub arn:${AWS::Partition}:s3:::${dynamoDBAppS3BucketNameForArtifacts}/*
+              - Action:
+                  - serverlessrepo:GetApplication
+                  - serverlessrepo:CreateCloudFormationTemplate
+                  - serverlessrepo:GetCloudFormationTemplate
+                Effect: Allow
+                Resource: '*'
+
+Outputs:
+  dynamoDBAppCodeBuildProject:
+    Description: CodeBuild Project Name
+    Value: !Ref CodeBuildProject
+    Export:
+      Name: dynamoDBAppCodeBuildProject

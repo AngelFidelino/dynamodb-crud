@@ -1,15 +1,9 @@
 AWSTemplateFormatVersion: 2010-09-09
 Transform: AWS::Serverless-2016-10-31
 Description: Elastic Beanstalk
-Outputs:
-  beanStalkApplication-dynamoDb-app:
-    Description: ElasticBeanstalk Application Name
-    Value: ¡Ref EBApp
-  beanStalkApplication-env-dynamoDb-app:
-    Description: ElasticBeanstalk Application Environment
-    Value: ¡Ref EBEnvDev
 
 Resources:
+  ## ----------------------------------------------------------------------------
   EBApp:
     Type: AWS::ElasticBeanstalk::Application
     Properties:
@@ -27,6 +21,7 @@ Resources:
         S3Key: "dynamodb-crud-1.0.jar"
         #S3Key: !Join [ '.', [!Ref EBDevAppS3KeyName, 'zip'] ]
 
+  ## ----------------------------------------------------------------------------
   EBEnvDev:
     Type: AWS::ElasticBeanstalk::Environment
     DependsOn:
@@ -43,6 +38,7 @@ Resources:
           OptionName: 'ServiceRole'
           Value: !Ref EBServiceRole
 
+  ## ----------------------------------------------------------------------------
   EBServiceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -60,3 +56,15 @@ Resources:
         - 'arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkService'
         - 'arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess'
       RoleName: 'aws-elasticbeanstalk-service-role'
+
+Outputs:
+  beanStalkApplicationDynamoDbApp:
+    Description: ElasticBeanstalk Application Name
+    Value: ¡Ref EBApp
+    Export:
+      Name: beanStalkApplicationDynamoDbApp
+  beanStalkApplicationEnvDynamoDbApp:
+    Description: ElasticBeanstalk Application Environment
+    Value: ¡Ref EBEnvDev
+    Export:
+      Name: beanStalkApplicationEnvDynamoDbApp

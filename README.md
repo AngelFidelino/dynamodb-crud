@@ -10,8 +10,11 @@ AWS_SECRET_ACCESS_KEY= {SECRET}
 
 SAM
 
-    Package: sam package --template-file ./eb-deployment.yaml --output-template-file ./eb-deployment-out.yaml  --region us-east-1
-    Deploy: sam deploy --template-file ./eb-deployment-out.yaml --stack-name <YOUR STACK NAME>
+    Package: sam package --template-file ./s3-deployment.yaml --output-template-file ./s3-deployment-out.yaml --region us-east-1 
+    Deploy: sam deploy --template-file ./s3-deployment-out.yaml --stack-name s3-deployment-stack --region us-east-1
+
+    Package: sam package --template-file ./eb-deployment.yaml --output-template-file ./eb-deployment-out.yaml --s3-bucket eb-s3 --region us-east-1
+    Deploy: sam deploy --template-file ./eb-deployment-out.yaml --stack-name eb-deployment-stack --region us-east-1 --capabilities CAPABILITY_NAMED_IAM
 
     Package: sam package --template-file ./dynamodb-deployment.yaml --output-template-file ./dynamodb-deployment-out.yaml  --region us-east-1
     Deploy: sam deploy --template-file ./dynamodb-deployment-out.yaml --stack-name <YOUR STACK NAME>

@@ -1,0 +1,21 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: Code Pipeline project
+
+Mappings:
+  attributes:
+    s3BucketForArtifacts:
+      suffixName: codepipeline-artifacts
+
+Resources:
+  S3BucketForArtifacts:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join ["-", [!Ref AWS::StackName, !FindInMap [ "attributes", "s3BucketForArtifacts", "suffixName"]]]
+
+Outputs:
+  dynamoDBAppS3BucketNameForArtifacts:
+    Description: S3 to store app artifacts
+    Value: !Join ["-", [!Ref AWS::StackName, !FindInMap [ "attributes", "s3BucketForArtifacts", "suffixName"]]]
+    Export:
+      Name: dynamoDBAppS3BucketNameForArtifacts

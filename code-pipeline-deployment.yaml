@@ -34,22 +34,7 @@ Parameters:
     Description: GitHub Branch name
     Type: String
 
-Mappings:
-  attributes:
-    s3BucketForArtifacts:
-      name: !Sub ${AWS::StackName}-codepipeline-artifacts
-
-Outputs:
-  s3BucketNameForArtifacts:
-    Description: S3 to store app artifacts
-    Value: !FindInMap [ "attributes", "s3BucketForArtifacts", "name"]
-
 Resources:
-  ## ----------------------------------------------------------------------------
-  S3BucketForArtifacts:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !FindInMap [ "attributes", "s3BucketForArtifacts", "name"]
 
   ## ----------------------------------------------------------------------------
   CodeBuildProject:
@@ -59,7 +44,7 @@ Resources:
       Artifacts:
         Type: S3
         Name: !Sub ${AWS::StackName}-project
-        Location: !FindInMap [ "attributes", "s3BucketForArtifacts", "name"]
+        Location: !ImportValue dynamoDBAppS3BucketNameForArtifacts
       BadgeEnabled: true
       Environment:
         ComputeType: !Ref ComputeType
@@ -128,16 +113,17 @@ Resources:
                 Provider: ElasticBeanstalk
               OutputArtifacts: [ ]
               Configuration:
-                ApplicationName: !ImportValue beanStalkApplication-dynamoDb-app
-                EnvironmentName: !ImportValue beanStalkApplication-env-dynamoDb-app
+                ApplicationName: !ImportValue beanStalkApplicationDynamoDbApp
+                EnvironmentName: !ImportValue beanStalkApplicationEnvDynamoDbApp
               RunOrder: 1
       ArtifactStore:
         Type: S3
-        Location: !Ref S3BucketForArtifacts
-
+        Location: !ImportValue dynamoDBAppS3BucketNameForArtifacts
+  ## ----------------------------------------------------------------------------
   CodeBuildProjectRole:
     Type: AWS::IAM::Role
     Properties:
+      RoleName: !Sub ${AWS::StackName}-iam-role-codebuild
       AssumeRolePolicyDocument:
         Statement:
           - Action:
@@ -149,13 +135,15 @@ Resources:
         Version: '2012-10-17'
       Path: /service-role/
       Policies:
-        - PolicyDocument:
+        - PolicyName: CICodeBuildRolePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
             Statement:
-              - Action:
+              - Effect: Allow
+                Action:
                   - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
-                Effect: Allow
                 Resource:
                   - !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/*
               - Action:
@@ -165,17 +153,25 @@ Resources:
                   - s3:ListBucket
                 Effect: Allow
                 Resource:
-                  - !Sub arn:${AWS::Partition}:s3:::${S3BucketForArtifacts}
-                  - !Sub arn:${AWS::Partition}:s3:::${S3BucketForArtifacts}/*
+                  - !Sub
+                    - "arn:${AWS::Partition}:s3:::${s3BucketNameForArtifacts}"
+                    - s3BucketNameForArtifacts: !ImportValue dynamoDBAppS3BucketNameForArtifacts
+                  - !Sub
+                    - "arn:${AWS::Partition}:s3:::${s3BucketNameForArtifacts}/*"
+                    - s3BucketNameForArtifacts: !ImportValue dynamoDBAppS3BucketNameForArtifacts
+                  #- Fn::ImportValue: !Sub arn:${AWS::Partition}:s3:::${dynamoDBAppS3BucketNameForArtifacts}
+                  #- Fn::ImportValue: !Sub arn:${AWS::Partition}:s3:::${dynamoDBAppS3BucketNameForArtifacts}/*
+                  #- !Sub arn:${AWS::Partition}:s3:::${dynamoDBAppS3BucketNameForArtifacts}
+                  #- !Sub arn:${AWS::Partition}:s3:::${dynamoDBAppS3BucketNameForArtifacts}/*
               - Action:
                   - serverlessrepo:GetApplication
                   - serverlessrepo:CreateCloudFormationTemplate
                   - serverlessrepo:GetCloudFormationTemplate
                 Effect: Allow
                 Resource: '*'
-            Version: '2012-10-17'
-          PolicyName: CICodeBuildRolePolicy
 
+
+  ## ----------------------------------------------------------------------------
   IamRoleForCodePipeline:
     Type: AWS::IAM::Role
     Properties:
@@ -199,7 +195,12 @@ Resources:
                   "s3:GetObjectVersion",
                   "s3:GetBucketVersioning",
                   "s3:PutObject" ]
-                Resource: !Join [ "", [ !GetAtt S3BucketForArtifacts.Arn, "/*" ] ]
+                Resource: !Join [ "", [ !ImportValue dynamoDBAppS3BucketNameForArtifacts, "/*" ] ]
+                #Resource:
+                #Fn::Join:
+                  #- ""
+                  #- !ImportValue dynamoDBAppS3BucketNameForArtifacts
+                  #- "/*"
               - Effect: Allow
                 Action: [
                   "codebuild:BatchGetBuilds",
