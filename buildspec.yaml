@@ -17,3 +17,4 @@ phases:
 artifacts:
   files:
     - dynamodb-crud-1.0.jar
+    - buildspec.yml
